@@ -50,9 +50,11 @@ start_x = 50
 start_y = 200
 spacing = CARD_WIDTH // 3 + 10
 tilemap = pygame.image.load("Card_Deck.png").convert_alpha()
-
 current_bid = 0
 current_ask = 0
+option = ""
+actual_gain = 0
+
 
 class Button:
     def __init__(self, rect, label):
@@ -133,7 +135,7 @@ def draw_text(text, x, y, color=(255, 255, 255)):
     img = font.render(text, True, color)
     screen.blit(img, (x, y))
 
-def generate_bid_ask(target_value, variance=0.1, min_margin=2, max_margin=10):
+def generate_bid_ask(target_value, variance=1, min_margin=2, max_margin=5):
     """
     Generates a bid and ask value based on the target value and a dynamic margin.
     
@@ -184,12 +186,6 @@ def start_new_round():
     revealed_cards = hand[:n_revealed]
     hidden_cards = hand[n_revealed:]
 
-    for card in revealed_cards:
-        print(str(card))
-
-    for card in hidden_cards:
-        print(str(card))
-
     last_action_message = f"Round {current_round} started. {n_revealed} card(s) revealed."
     round_timer = 30 * 1000  # Set the round timer to 30 seconds (in milliseconds)
 
@@ -204,8 +200,8 @@ def draw_game_screen():
     draw_text(f"Score: {player_score}", 50, 140)
 
     # Display bid and ask values
-    draw_text(f"Bid: {current_bid}", 50, 200)
-    draw_text(f"Ask: {current_ask}", 50, 240)
+    draw_text(f"Bid: {current_bid}", 200, 400)
+    draw_text(f"Ask: {current_ask}", 300, 400)
 
     # Draw revealed cards
     for i, card in enumerate(revealed_cards):
@@ -227,7 +223,7 @@ def draw_game_screen():
 
 def handle_game_events(event):
     global amount_selected, game_state, current_round, last_action_message
-    global realisation_timer
+    global realisation_timer, show_realisation_cards
 
     if event.type == pygame.MOUSEBUTTONDOWN:
         pos = event.pos
@@ -238,17 +234,23 @@ def handle_game_events(event):
                 last_action_message = f"Selected amount: {amount_selected}"
 
         if bid_button.is_clicked(pos):
-            evaluate_realisation("bid")
             game_state = "realisation"
-            realisation_timer = 5000 
-
+            realisation_timer = 3000  # 3 seconds in milliseconds
+            show_realisation_cards = True
+            option = "bid"
+            actual_count, actual_gain, explanation = evaluate_realisation("bid")
+            print(f"Round {current_round} - Bid Evaluation: {explanation} | Gain/Loss: {actual_gain}")
+                    
         if ask_button.is_clicked(pos):
-            evaluate_realisation("ask")
             game_state = "realisation"
-            realisation_timer = 5000
+            realisation_timer = 3000  # 3 seconds in milliseconds
+            show_realisation_cards = True
+            option = "ask"
+            actual_count, actual_gain, explanation = evaluate_realisation("ask")
+            print(f"Round {current_round} - Ask Evaluation: {explanation} | Gain/Loss: {actual_gain}")
 
 def evaluate_realisation(action):
-    global last_action_message, player_score
+    global last_action_message, player_score, actual_gain
 
     # Count how many target cards are in the full hand
     target_value = "K"  # or whatever is your target
@@ -257,54 +259,73 @@ def evaluate_realisation(action):
 
     correct = False
     gain = 0
+    explanation = ""
 
     if action == "bid":
         if actual_count >= amount_selected:
             correct = True
             gain = 100 * amount_selected
+            explanation = f"Bid successful: {amount_selected} or more {target_value}s found ({actual_count})"
         else:
             gain = -50
+            explanation = f"Bid failed: only {actual_count} {target_value}s found (needed {amount_selected})"
     elif action == "ask":
         if actual_count < amount_selected:
             correct = True
             gain = 50 * (amount_selected - actual_count)
+            explanation = f"Ask successful: fewer than {amount_selected} {target_value}s found ({actual_count})"
         else:
             if actual_count == amount_selected:
                 gain = -50
+                explanation = f"Ask failed: exactly {amount_selected} {target_value}s found"
             else:
                 gain = -50 - 50 * (actual_count - amount_selected)
+                explanation = f"Ask failed: {actual_count} {target_value}s found (more than {amount_selected})"
 
-    player_score += gain
-    last_action_message = f"Actual {target_value}s: {actual_count}. {'Correct' if correct else 'Wrong'}. {'Gained' if gain >= 0 else 'Lost'} {abs(gain)}."
-
+    # Store the actual gain for comparison with player input
+    actual_gain = gain
+    return actual_count, gain, explanation
 
 def draw_realisation_screen():  
+    global show_realisation_cards, realisation_timer
+    
     screen.fill((30, 30, 30))
     draw_text(f"Realisation Phase — Round {current_round}", 50, 20)
     draw_text(last_action_message, 50, 60)
-    draw_text(f"Score: {player_score}", 50, 100)
+    
+    # Show the bid/ask value that was priced
+    if option == "bid":
+        draw_text(f"You bid for {amount_selected} at {current_bid}", 50, 100)
+    else:
+        draw_text(f"You asked for {amount_selected} at {current_ask}", 50, 100)
 
+    # Only show score after input is submitted
+    if input_text == "":
+        draw_text(f"Score: {player_score}", 50, 140)
+
+    # Handle card visibility timer
+    if realisation_timer > 0:
+        show_realisation_cards = True
+    else:
+        show_realisation_cards = False
+
+    # Draw cards - either revealed or hidden based on timer
     if show_realisation_cards:
         cards_to_show = revealed_cards + hidden_cards
     else:
         cards_to_show = [Card("5", "Hidden") for _ in revealed_cards + hidden_cards]
 
     for i, card in enumerate(cards_to_show):
-        card_img = extract_card_image(tilemap, card.value, card.suit)
+        card_img = extract_card_image(tilemap, card.value if show_realisation_cards else "5", 
+                                    card.suit if show_realisation_cards else "Hidden")
         x = start_x + i * spacing
         screen.blit(card_img, (x, start_y))
 
-    # Adjusting rectangle position to be next to the text
     draw_text("Enter your gain/loss:", 50, 500)
-
-    # Position the rectangle to the right of the text
-    rect_x = 325  # 50 is the starting X position of the text + a margin for spacing
-    rect_y = 500 - 5   # Align the rectangle vertically with the text (add a little offset for better alignment)
-
+    rect_x = 325
+    rect_y = 500 - 5
     pygame.draw.rect(screen, (200, 200, 200), (rect_x, rect_y, 140, 40))
-
-    # Now draw the input text inside the rectangle
-    draw_text(input_text, rect_x + 10, rect_y + 5, color=(0, 0, 0))  # Add padding for the input text
+    draw_text(input_text, rect_x + 10, rect_y + 5, color=(0, 0, 0))
 
 
 input_amount = ""
@@ -348,28 +369,35 @@ while running:
         elif game_state == "game":
             handle_game_events(event)
 
-        # INPUT PHASE (after realisation screen hides cards)
+        # REALISATION PHASE - Handle input here
         elif game_state == "realisation":
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_BACKSPACE:
                     input_text = input_text[:-1]
                 elif event.key == pygame.K_RETURN:
                     try:
-                        typed_gain = int(input_text)
-                        # Optionally compare with actual gain for feedback
-                        last_action_message = f"You entered {typed_gain}."
+                        player_input = int(input_text)
+                        # Compare with actual gain
+                        if player_input == actual_gain:
+                            # Correct input - apply the gain/loss
+                            player_score += actual_gain
+                            last_action_message = f"Correct! {actual_gain} applied to your score."
+                            print(f"Round {current_round} - Player input CORRECT: {player_input} | Score change: {actual_gain} | New score: {player_score}")
+                        else:
+                            # Incorrect input - apply penalties
+                            if actual_gain >= 0:
+                                # Player missed a gain - lose 50
+                                player_score -= 50
+                                last_action_message = f"Incorrect! You missed a gain of {actual_gain}. Penalty: -50."
+                                print(f"Round {current_round} - Player input INCORRECT (missed gain) | Expected: {actual_gain} | Entered: {player_input} | Penalty: -50 | New score: {player_score}")
+                            else:
+                                # Player underreported a loss - absorb full loss plus 50
+                                player_score += actual_gain - 50
+                                last_action_message = f"Incorrect! You underreported a loss of {abs(actual_gain)}. Penalty: full loss plus -50."
+                                print(f"Round {current_round} - Player input INCORRECT (underreported loss) | Expected: {actual_gain} | Entered: {player_input} | Penalty: {actual_gain - 50} | New score: {player_score}")
                     except ValueError:
                         last_action_message = "Invalid input! Please enter a number."
-                    else:
-                        input_text = ""
-                        current_round += 1
-                        if current_round >= max_rounds:
-                            game_state = "game_over"
-                        else:
-                            game_state = "game"
-                            start_new_round()
-                else:
-                    input_text += event.unicode
+                        print(f"Round {current_round} - INVALID INPUT: '{input_text}' is not a number")
 
     # PHASE LOGIC / DRAWING
     if game_state == "menu":
@@ -379,11 +407,13 @@ while running:
     elif game_state == "game":
         draw_game_screen()
 
-    if game_state == "realisation":
-        realisation_timer -= dt
+    elif game_state == "realisation":
+        if realisation_timer > 0:
+            realisation_timer -= dt
+            show_realisation_cards = True
 
         if realisation_timer <= 0:
-            show_realisation_cards = True
+            show_realisation_cards = False
         draw_realisation_screen()
         
     elif game_state == "game_over":
