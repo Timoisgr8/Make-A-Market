@@ -62,7 +62,7 @@ clock = pygame.time.Clock()
 font = pygame.font.SysFont(None, 36)
 
 # Game state
-game_state = "menu"  # "menu" or "game"
+game_state = "menu"
 input_text = ""
 last_action_message = ""
 current_round = 1
@@ -176,7 +176,7 @@ def generate_bid_ask(event_name):
     """
     Generates bid/ask prices that account for round events
     """
-    base_value = 24  # Default theoretical value
+    base_value = 24
     
     # Adjust base value based on event
     if "Ace is worth 20" in event_name:
